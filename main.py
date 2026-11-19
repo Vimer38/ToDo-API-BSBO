@@ -3,9 +3,7 @@ from fastapi import APIRouter
 from fastapi import FastAPI, HTTPException
 from typing import List, Dict, Any
 from datetime import datetime
-from routers import tasks
-
-
+from routers import tasks, stats
 
 app = FastAPI(
     title="ToDo лист API",
@@ -16,7 +14,8 @@ app = FastAPI(
     }
 )
 
-app.include_router(tasks.router)
+app.include_router(tasks.router, prefix="/api/v1")
+app.include_router(stats.router)
 
 @app.get("/")
 async def welcome() -> dict:
