@@ -1,32 +1,35 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+
+from fastapi import Depends
 from sqlalchemy import select
-from models import Task
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from database import get_async_session
+from models import Task
+from routers.tasks import router
+from schemas import TaskDeadlineInfo
+from utils import calculate_days_left
 
-router = APIRouter(
-    prefix="/stats",
-    tags=["statistics"]
-)
 
-
-@router.get("/", response_model=dict)
-async def get_tasks_stats(db: AsyncSession = Depends(get_async_session)) -> dict:
-    result = await db.execute(select(Task))
+@router.get("/deadlines", response_model=List[TaskDeadlineInfo])
+async def get_pending_deadlines(
+        db: AsyncSession = Depends(get_async_session)
+) -> List[TaskDeadlineInfo]:
+    """Статистика по срокам невыполненных (pending) задач."""
+    result = await db.execute(
+        select(Task).where(Task.completed == False)  # noqa: E712
+    )
     tasks = result.scalars().all()
-    total_tasks = len(tasks)
-    by_quadrant = {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0}
-    by_status = {"completed": 0, "pending": 0}
-    for task in tasks:
-        if task.quadrant in by_quadrant:
-            by_quadrant[task.quadrant] += 1
-        if task.completed:
-            by_status["completed"] += 1
-        else:
-            by_status["pending"] += 1
 
-    return {
-        "total_tasks": total_tasks,
-        "by_quadrant": by_quadrant,
-        "by_status": by_status
-    }
+    items = [
+        TaskDeadlineInfo(
+            title=t.title,
+            description=t.description,
+            created_at=t.created_at,
+            deadline_at=t.deadline_at,
+            days_left=calculate_days_left(t.deadline_at)
+        )
+        for t in tasks
+    ]
+    # Самые горящие задачи сверху
+    return sorted(items, key=lambda x: x.days_left)
